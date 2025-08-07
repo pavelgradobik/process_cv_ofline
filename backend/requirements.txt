@@ -1,0 +1,10 @@
+fastapi==0.104.1
+uvicorn
+pandas
+scikit-learn
+numpy
+sumy
+python-dotenv
+requests
+beautifulsoup4
+streamlit
