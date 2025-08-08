@@ -1,28 +1,44 @@
+from typing import Optional, Callable, List
 from typing import Optional
 from scipy.sparse import spmatrix
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+ProgressCb = Optional[Callable[[int, int, str], None]]
+
 class OfflineEmbedder:
     def __init__(self, dimension=384):
         self.vectorizer = TfidfVectorizer(max_features=dimension)
         self.fitted = False
-        self.matrix: Optional[spmatrix] = None
+        self.matrix: Optional[spmatrix] = None  # not used directly now
 
-    def fit(self, texts):
-        self.matrix = self.vectorizer.fit_transform(texts)
+    def fit(self, texts: List[str]):
+        self.vectorizer.fit(texts)
         self.fitted = True
 
-    def embed(self, text):
-        if not self.fitted or self.matrix is None:
+    def embed(self, text: str) -> np.ndarray:
+        if not self.fitted:
             raise RuntimeError("Call fit() with all texts first!")
         vec_sparse = self.vectorizer.transform([text])
         vec = np.asarray(vec_sparse.todense()).flatten()
-        if vec.shape[0] < self.matrix.shape[1]:
-            pad = np.zeros(self.matrix.shape[1] - vec.shape[0])
-            vec = np.concatenate([vec, pad])
         return vec
 
-    def embed_batch(self, texts):
-        return np.vstack([self.embed(t) for t in texts])
+    def embed_batch(self, texts: List[str]) -> np.ndarray:
+        if not self.fitted:
+            raise RuntimeError("Call fit() with all texts first!")
+        mat = self.vectorizer.transform(texts)
+        return np.asarray(mat.todense())
+
+    def embed_batch_with_progress(self, texts: List[str], update: ProgressCb = None) -> np.ndarray:
+        if not self.fitted:
+            raise RuntimeError("Call fit() with all texts first!")
+        total = len(texts)
+        rows = []
+        for i, t in enumerate(texts, 1):
+            vec_sparse = self.vectorizer.transform([t])
+            vec = np.asarray(vec_sparse.todense()).flatten()
+            rows.append(vec)
+            if update and (i % 50 == 0 or i == total):
+                update(i, total, "Vectorizing")
+        return np.vstack(rows)
 
