@@ -1,128 +1,132 @@
 import streamlit as st
-import pandas as pd
+import os, sys, requests, numpy as np, pandas as pd
 from backend.file_processor import load_resumes
 from backend.embeddings import OfflineEmbedder
-from backend.summary_service import get_resume_summary
-import numpy as np
-import os, sys
-import tempfile
-import requests
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-st.title("Offline CV Analyzer with Capgemini Generative Engine")
+st.set_page_config(page_title="Offline CV Analyzer (with progress)", layout="wide")
+st.title("Offline CV Analyzer (with visible stages)")
 
-# File upload tab
 with st.expander("Upload Resume CSV (local file or by link)", expanded=True):
     uploaded_file = st.file_uploader("Upload Resume CSV", type=["csv"])
     url_upload = st.text_input("Or provide a direct link to a Resume CSV file (e.g. http://.../Resume.csv)")
     upload_btn = st.button("Upload from Link")
-    
-    csv_save_path = "data/uploads/csv/Resume.csv"
-    file_changed = False
+
+    CSV_PATH = os.path.join(PROJECT_ROOT, "data", "uploads", "csv", "Resume.csv")
+    os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
+
+    if "resumes_reload" not in st.session_state:
+        st.session_state["resumes_reload"] = False
 
     if uploaded_file is not None:
-        # Save uploaded file
-        with open(csv_save_path, "wb") as f:
+        with open(CSV_PATH, "wb") as f:
             f.write(uploaded_file.read())
-        st.success(f"Uploaded file saved as {csv_save_path}")
-        file_changed = True
+        st.success(f"Uploaded file saved as {CSV_PATH}")
+        st.session_state["resumes_reload"] = True
 
     elif url_upload and upload_btn:
         try:
-            resp = requests.get(url_upload)
+            resp = requests.get(url_upload, timeout=30)
             resp.raise_for_status()
-            with open(csv_save_path, "wb") as f:
+            with open(CSV_PATH, "wb") as f:
                 f.write(resp.content)
-            st.success(f"Downloaded and saved file from {url_upload} as {csv_save_path}")
-            file_changed = True
+            st.success(f"Downloaded and saved file from {url_upload} → {CSV_PATH}")
+            st.session_state["resumes_reload"] = True
         except Exception as e:
             st.error(f"Failed to download: {e}")
 
-    if file_changed:
-        st.session_state["resumes_reload"] = True
+def _count_rows(path: str) -> int:
+    if not os.path.exists(path): return 0
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        return max(sum(1 for _ in f) - 1, 0)
 
-if "resumes_reload" not in st.session_state:
-    st.session_state["resumes_reload"] = False
+def load_resumes_with_progress(path: str, chunk_size: int = 2000):
+    from backend.file_processor import html_to_text
+    if not os.path.exists(path):
+        st.error(f"CSV not found at: {path}")
+        return []
+    total = _count_rows(path)
+    prog = st.progress(0, text=f"Reading CSV 0/{total}")
+    out, done = [], 0
+    for chunk in pd.read_csv(path, chunksize=chunk_size):
+        if not {"ID", "Resume_html"}.issubset(chunk.columns):
+            st.error("CSV must contain columns: ID, Resume_html (Category optional).")
+            return []
+        for _, row in chunk.iterrows():
+            html = str(row["Resume_html"])
+            text = html_to_text(html)
+            out.append({"ID": row["ID"], "Category": row.get("Category", ""), "Resume_html": html, "Resume_str": text})
+            done += 1
+            if done % 200 == 0 or done == total:
+                prog.progress((done/total) if total else 1.0, text=f"Reading CSV {done}/{total}")
+    prog.empty()
+    return out
 
 @st.cache_data(show_spinner=False)
-def get_all_resumes():
-    from backend.file_processor import load_resumes
+def load_resumes_cached(path: str):
     return load_resumes()
 
-if st.session_state["resumes_reload"]:
-    from backend.file_processor import load_resumes
-    resumes = load_resumes()
+with st.expander("Data loading options"):
+    force_fresh = st.checkbox("Force reload with progress", value=False)
+
+if st.session_state["resumes_reload"] or force_fresh:
+    with st.status("Loading resumes…", expanded=True) as status:
+        st.write("Stage: Reading CSV with progress")
+        resumes = load_resumes_with_progress(CSV_PATH)
+        status.update(label="Resumes loaded", state="complete", expanded=False)
     st.session_state["resumes_reload"] = False
 else:
-    resumes = get_all_resumes()
+    with st.spinner("Loading resumes (cached)…"):
+        resumes = load_resumes_cached(CSV_PATH)
+
+if not resumes:
+    st.warning("No resumes loaded yet.")
+    st.stop()
+
+st.caption(f"Loaded {len(resumes):,} resumes.")
 
 texts = [r["Resume_str"] for r in resumes]
+with st.status("Building embeddings…", expanded=True) as status:
+    st.write("Step 1/2: Fitting TF‑IDF vectorizer")
+    embedder = OfflineEmbedder()
+    embedder.fit(texts)
 
-st.set_page_config(page_title="CV Analyzer (w/ Capgemini AI)", layout="wide")
+    st.write("Step 2/2: Vectorizing all resumes")
+    prog = st.progress(0, text=f"Vectorizing 0/{len(texts)}")
 
-st.title("Offline CV Analyzer with Capgemini Generative Engine")
+    def _update(i, total, _):
+        prog.progress(i/total, text=f"Vectorizing {i}/{total}")
 
-resumes = load_resumes()
-texts = [r["Resume_str"] for r in resumes]
+    if hasattr(embedder, "embed_batch_with_progress"):
+        vectors = embedder.embed_batch_with_progress(texts, update=_update)
+    else:
+        vectors = embedder.embed_batch(texts)
+        prog.progress(1.0, text=f"Vectorizing {len(texts)}/{len(texts)}")
 
-embedder = OfflineEmbedder()
-embedder.fit(texts)
-vectors = embedder.embed_batch(texts)
-
-def semantic_search(query, top_k=5):
-    q_vec = embedder.embed(query)
-    sims = np.dot(vectors, q_vec) / (np.linalg.norm(vectors, axis=1) * np.linalg.norm(q_vec) + 1e-8)
-    idxs = np.argsort(sims)[::-1][:top_k]
-    return [resumes[i] for i in idxs], [sims[i] for i in idxs]
+    prog.empty()
+    status.update(label="Embeddings ready", state="complete", expanded=False)
 
 tab1, tab2, tab3 = st.tabs(["All Candidates", "Semantic Search", "AI Resume Analysis"])
 
 with tab1:
     st.header("All Candidates")
-    df = pd.DataFrame(resumes)
-    st.dataframe(df[["ID", "Category", "Resume_str"]].head(100))
-    candidate_id = st.text_input("View candidate by ID")
-    if candidate_id:
-        cand = next((r for r in resumes if str(r["ID"]) == candidate_id), None)
-        if cand:
-            st.write(f"**ID:** {cand['ID']}")
-            st.write(f"**Category:** {cand['Category']}")
-            st.write("**Extracted Resume Text:**")
-            st.write(cand["Resume_str"])
-            with st.expander("Show Raw Resume HTML"):
-                st.markdown(cand["Resume_html"], unsafe_allow_html=True)
-            st.write("**AI/Extractive Summary:**")
-            with st.spinner("Generating summary..."):
-                st.info(get_resume_summary(cand["Resume_str"]))
-        else:
-            st.error("Candidate not found")
+    st.dataframe(pd.DataFrame(resumes)[["ID", "Category", "Resume_str"]].head(100))
 
 with tab2:
     st.header("Semantic Search")
-    query = st.text_input("Enter your search query (e.g. 'Senior Python developer with 10 years experience')")
+    query = st.text_input("Query")
     if query:
-        results, scores = semantic_search(query, top_k=10)
-        for i, (res, score) in enumerate(zip(results, scores), 1):
-            st.subheader(f"Rank #{i} (Score: {score:.2f})")
-            st.write(f"**ID:** {res['ID']}")
-            st.write(f"**Category:** {res['Category']}")
-            st.write("**Resume:**")
-            st.write(res["Resume_str"][:700] + " ...")
-            with st.expander("Show AI/Extractive Summary"):
-                st.info(get_resume_summary(res["Resume_str"]))
+        q_vec = embedder.embed(query)
+        sims = np.dot(vectors, q_vec) / (np.linalg.norm(vectors, axis=1) * np.linalg.norm(q_vec) + 1e-8)
+        idxs = np.argsort(sims)[::-1][:10]
+        for rank, i in enumerate(idxs, 1):
+            r = resumes[i]
+            st.subheader(f"{rank}. ID {r['ID']}  (score {sims[i]:.2f})")
+            st.write(r["Resume_str"][:800] + " …")
 
 with tab3:
     st.header("AI Resume Analysis")
-    st.write("Paste a candidate's resume text below to get an AI/extractive summary.")
-    user_text = st.text_area("Resume text", height=300)
-    if st.button("Analyze Resume"):
-        if user_text.strip():
-            with st.spinner("Generating summary..."):
-                st.info(get_resume_summary(user_text))
-        else:
-            st.warning("Paste some resume text above.")
-
-st.caption("All local/offline. Summaries use Capgemini Generative Engine if available, otherwise local summarizer")
+    st.write("Paste resume text to summarize.")
