@@ -4,9 +4,13 @@ from backend.file_processor import load_resumes
 from backend.embeddings import OfflineEmbedder
 from backend.summary_service import get_resume_summary
 import numpy as np
-import os
+import os, sys
 import tempfile
 import requests
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 st.title("Offline CV Analyzer with Capgemini Generative Engine")
 
@@ -121,4 +125,4 @@ with tab3:
         else:
             st.warning("Paste some resume text above.")
 
-st.caption("All local/offline. Summaries use Capgemini Generative Engine if available, otherwise local summarizer. Developed with ❤️ in Python.")
+st.caption("All local/offline. Summaries use Capgemini Generative Engine if available, otherwise local summarizer")

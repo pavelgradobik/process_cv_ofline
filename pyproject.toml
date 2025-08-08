@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend="setuptools.build_meta"
+
+[project]
+name="cv_offline_analysis_backend"
+version="1.0.0"
+description="Backend package for cv analysis"
+readme="README.md"
+requires-python=">=3.9"
+dependencies=[]
+
+[tool.setuptools.packages.find]
+where=["."]
+include=["backend"]
