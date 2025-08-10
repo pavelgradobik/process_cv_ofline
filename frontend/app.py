@@ -1,6 +1,6 @@
 import streamlit as st
 import os, sys, requests, numpy as np, pandas as pd
-from backend.file_processor import load_resumes
+from backend.file_processor import load_resumes, html_to_text
 from backend.embeddings import OfflineEmbedder
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,28 +40,39 @@ with st.expander("Upload Resume CSV (local file or by link)", expanded=True):
 
 def _count_rows(path: str) -> int:
     if not os.path.exists(path): return 0
-    with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        return max(sum(1 for _ in f) - 1, 0)
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return max(sum(1 for _ in f) - 1, 0)
+    except Exception:
+        return 0
 
 def load_resumes_with_progress(path: str, chunk_size: int = 2000):
     from backend.file_processor import html_to_text
     if not os.path.exists(path):
         st.error(f"CSV not found at: {path}")
         return []
+
     total = _count_rows(path)
+    if total <=0:
+        return []
+
     prog = st.progress(0, text=f"Reading CSV 0/{total}")
     out, done = [], 0
+
     for chunk in pd.read_csv(path, chunksize=chunk_size):
         if not {"ID", "Resume_html"}.issubset(chunk.columns):
             st.error("CSV must contain columns: ID, Resume_html (Category optional).")
+            prog.empty()
             return []
+
         for _, row in chunk.iterrows():
             html = str(row["Resume_html"])
             text = html_to_text(html)
             out.append({"ID": row["ID"], "Category": row.get("Category", ""), "Resume_html": html, "Resume_str": text})
             done += 1
             if done % 200 == 0 or done == total:
-                prog.progress((done/total) if total else 1.0, text=f"Reading CSV {done}/{total}")
+                frac = (done/total) if total else 1.0
+                prog.progress(frac, text=f"Reading CSV {done}/{total}")
     prog.empty()
     return out
 
