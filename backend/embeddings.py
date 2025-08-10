@@ -10,7 +10,7 @@ class OfflineEmbedder:
     def __init__(self, dimension=384):
         self.vectorizer = TfidfVectorizer(max_features=dimension)
         self.fitted = False
-        self.matrix: Optional[spmatrix] = None  # not used directly now
+        self.matrix: Optional[spmatrix] = None  # not used directly; kept for lint calm
 
     def fit(self, texts: List[str]):
         self.vectorizer.fit(texts)
@@ -38,7 +38,7 @@ class OfflineEmbedder:
             vec_sparse = self.vectorizer.transform([t])
             vec = np.asarray(vec_sparse.todense()).flatten()
             rows.append(vec)
-            if update and (i % 50 == 0 or i == total):
+            if update and (i % 200 == 0 or i == total):
                 update(i, total, "Vectorizing")
         return np.vstack(rows)
 
