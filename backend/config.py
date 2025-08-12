@@ -5,11 +5,17 @@ load_dotenv()
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CSV = os.path.join(PROJECT_ROOT, "data", "uploads", "csv", "Resume.csv")
-GENERATIVE_ENGINE_API_KEY = os.getenv("GENERATIVE_ENGINE_API_KEY", "")
-GENERATIVE_ENGINE_BASE_URL = os.getenv("GENERATIVE_ENGINE_BASE_URL", "").rstrip("/")
-EMBEDDING_MODEL = os.getenv("GENERATIVE_ENGINE_EMBEDDING_MODEL", "text-embedding-3-small")
-CHAT_MODEL = os.getenv("GENERATIVE_ENGINE_CHAT_MODEL", "openai.gpt-3.5-turbo")
-REQUEST_TIMEOUT = float(os.getenv("GENERATIVE_ENGINE_TIMEOUT_SEC", "240"))
-EMBED_BATCH = int(os.getenv("EMBED_BATCH", "128"))
-USE_ENGINE_EMBEDDINGS = os.getenv("USE_ENGINE_EMBEDDINGS", "False").lower() == "False"
 CSV_PATH = os.getenv("CSV_PATH", DEFAULT_CSV)
+
+CORP_EMBED_BASE_URL = os.getenv(
+    "CORP_EMBED_BASE_URL"
+).rstrip("/")
+
+CORP_API_KEY = os.getenv("CORP_API_KEY", "").strip()
+CORP_EMBED_PROVIDER = os.getenv("CORP_EMBED_PROVIDER", "sagemaker").strip()
+CORP_EMBED_MODEL = os.getenv("CORP_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2").strip()
+
+EMBED_BATCH = int(os.getenv("EMBED_BATCH", "128"))
+HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "60"))
+VERIFY_SSL = os.getenv("VERIFY_SSL", "true").lower() == "true"
+RETRY_TIMES = int(os.getenv("RETRY_TIMES", "3"))
