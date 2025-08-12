@@ -1,9 +1,14 @@
+# frontend/app.py
 import os
 import sys
 import requests
-import numpy as np
 import pandas as pd
 import streamlit as st
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from backend.file_processor import load_resumes_with_stats, load_resumes
 from backend.corp_embeddings import CorporateEmbeddingClient
 from backend.vector_store import (
@@ -11,21 +16,9 @@ from backend.vector_store import (
     query as chroma_query, count as chroma_count,
 )
 
-# --- Make backend importable ---
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+st.set_page_config(page_title="CV Analyzer (Corporate Embeddings + ChromaDB)", layout="wide")
+st.title("CV Analyzer (CSV/XLSX • HTML+STR • Corporate Embeddings + ChromaDB)")
 
-from backend.file_processor import load_resumes_with_stats, load_resumes
-#
-from backend.vector_store import (
-    get_client, reset_collection, index_records,
-    query as chroma_query, count as chroma_count,
-)
-
-
-st.set_page_config(page_title="Offline CV Analyzer (Engine + ChromaDB)", layout="wide")
-st.title("Offline CV Analyzer (CSV/XLSX • HTML+STR • Engine Embeddings + ChromaDB)")
 embed_client = CorporateEmbeddingClient()
 
 DATA_DIR = os.path.join(PROJECT_ROOT, "data", "uploads", "csv")
@@ -37,32 +30,18 @@ if "resumes_reload" not in st.session_state:
     st.session_state["resumes_reload"] = False
 if "current_source" not in st.session_state:
     st.session_state["current_source"] = DEFAULT_PATH
-
-# embeddings cache
-if "embeddings_sig" not in st.session_state:
-    st.session_state["embeddings_sig"] = None
-if "embedder_obj" not in st.session_state:
-    st.session_state["embedder_obj"] = None
-if "vectors_arr" not in st.session_state:
-    st.session_state["vectors_arr"] = None
-if "embedder_kind" not in st.session_state:
-    st.session_state["embedder_kind"] = None
-if "embedder_model" not in st.session_state:
-    st.session_state["embedder_model"] = None
-
-# chroma cache
 if "indexed_sig" not in st.session_state:
     st.session_state["indexed_sig"] = None
 if "pending_reindex" not in st.session_state:
     st.session_state["pending_reindex"] = False
 
-def file_signature(path: str, records_len: int, kind: str, model: str) -> tuple:
+def file_signature(path: str, records_len: int) -> tuple:
     try:
         mtime = os.path.getmtime(path)
         size = os.path.getsize(path)
     except OSError:
         mtime, size = 0.0, 0
-    return (os.path.abspath(path), round(mtime, 3), size, int(records_len), kind, model)
+    return (os.path.abspath(path), round(mtime, 3), size, int(records_len))
 
 # ------------- Upload -------------
 with st.expander("Upload resumes file (CSV/XLSX) or by link", expanded=True):
@@ -81,7 +60,7 @@ with st.expander("Upload resumes file (CSV/XLSX) or by link", expanded=True):
             st.session_state["indexed_sig"] = None
             st.success("ChromaDB collection reset.")
 
-    # Save uploaded file (preserve extension) and mark for reindex
+    # Save uploaded file and mark for reindex
     if uploaded_file is not None:
         ext = os.path.splitext(uploaded_file.name)[1].lower()
         target = os.path.join(DATA_DIR, f"Resume{ext or '.csv'}")
@@ -91,11 +70,9 @@ with st.expander("Upload resumes file (CSV/XLSX) or by link", expanded=True):
         st.session_state["current_source"] = target
         st.session_state["resumes_reload"] = True
 
-        # Reset collection immediately on upload
         reset_collection(get_client())
         st.session_state["indexed_sig"] = None
         st.session_state["pending_reindex"] = True
-        st.session_state["embeddings_sig"] = None
 
     elif url_upload and upload_btn:
         try:
@@ -114,7 +91,6 @@ with st.expander("Upload resumes file (CSV/XLSX) or by link", expanded=True):
             reset_collection(get_client())
             st.session_state["indexed_sig"] = None
             st.session_state["pending_reindex"] = True
-            st.session_state["embeddings_sig"] = None
         except Exception as e:
             st.error(f"Download failed: {e}")
 
@@ -127,7 +103,7 @@ try:
 except OSError:
     st.caption("File not found (size unavailable).")
 
-with st.expander("Data loading & embedding options"):
+with st.expander("Data loading options"):
     force_fresh = st.checkbox("Force reload with progress", value=False)
 
 def load_with_progress(p: str):
@@ -152,68 +128,30 @@ if not records:
     st.caption(
         f"Source: {stats.get('source_path','?')} • "
         f"Total rows: {stats.get('total_rows_raw',0):,} • "
-        f"Rows w/ any text: {stats.get('rows_with_any_text',0):,} • "
-        f"Rows without text: {stats.get('rows_without_any_text',0):,} • "
-        f"Rows missing ID: {stats.get('rows_missing_id',0):,}"
+        f"Any text: {stats.get('rows_with_any_text',0):,} • "
+        f"No text: {stats.get('rows_without_any_text',0):,} • "
+        f"Missing ID: {stats.get('rows_missing_id',0):,}"
         + (f" • Error: {stats.get('error')}" if stats.get('error') else "")
     )
     st.stop()
 
 st.caption(
     f"Source: {stats.get('source_path','?')} • "
-    f"Total rows (raw): {stats.get('total_rows_raw',0):,} • "
-    f"Rows with any text: {stats.get('rows_with_any_text',0):,} • "
-    f"Rows without text: {stats.get('rows_without_any_text',0):,} • "
-    f"Rows missing ID: {stats.get('rows_missing_id',0):,} • "
-    f"Used (valid) resumes: {stats.get('rows_used',0):,} • "
+    f"Total (raw): {stats.get('total_rows_raw',0):,} • "
+    f"Any text: {stats.get('rows_with_any_text',0):,} • "
+    f"No text: {stats.get('rows_without_any_text',0):,} • "
+    f"Missing ID: {stats.get('rows_missing_id',0):,} • "
+    f"Used: {stats.get('rows_used',0):,} • "
     f"non-empty HTML: {stats.get('html_non_empty',0):,} • non-empty STR: {stats.get('str_non_empty',0):,}"
 )
 
-# -------- Build embeddings (cached: signature includes embedder kind + model) --------
-texts = [r["Resume_str"] for r in records]
-kind = "corporate"
-model_name = "corporate-embedding-client"
-current_sig = file_signature(source_path, len(records), kind, model_name)
-
-need_embeddings = (
-    st.session_state["embeddings_sig"] != current_sig or
-    st.session_state["embedder_obj"] is None or
-    st.session_state["vectors_arr"] is None or
-    st.session_state["embedder_kind"] != kind or
-    st.session_state["embedder_model"] != model_name
-)
-
-if need_embeddings:
-    with st.status("Building embeddings…", expanded=True) as status:
-        status.write("Embedding via corporate embedding client")
-        embedder = embed_client
-        prog = st.progress(0, text=f"Embedding 0/{len(texts)}")
-        vectors = embedder.embed_batch_with_progress(
-            texts,
-            update=lambda i, total, _: prog.progress(i / total, text=f"Embedding {i}/{total}")
-        )
-        prog.empty()
-        status.update(label="Embeddings ready", state="complete", expanded=False)
-
-    st.session_state["embedder_obj"] = embedder
-    st.session_state["vectors_arr"] = vectors
-    st.session_state["embeddings_sig"] = current_sig
-    st.session_state["embedder_kind"] = kind
-    st.session_state["embedder_model"] = model_name
-else:
-    embedder = st.session_state["embedder_obj"]
-    vectors = st.session_state["vectors_arr"]
-
-st.caption(f"In‑memory vectors: {vectors.shape[0]:,} × {vectors.shape[1]} (via {kind}: {model_name})")
-
-# -------- Index into ChromaDB only when needed --------
-# --- Index into Chroma via corporate embeddings (only when needed) ---
+# -------- Index into Chroma via corporate embeddings (only when needed) --------
 try:
     col_count = chroma_count(get_client())
 except Exception:
     col_count = 0
 
-sig = (os.path.abspath(source_path), os.path.getmtime(source_path) if os.path.exists(source_path) else 0.0, len(records))
+sig = file_signature(source_path, len(records))
 need_index = (st.session_state.get("pending_reindex", False) or col_count == 0 or st.session_state.get("indexed_sig") != sig)
 
 if need_index:
@@ -227,8 +165,10 @@ if need_index:
         s.write(f"Indexed {total_indexed:,} resumes.")
         s.update(label="ChromaDB ready", state="complete", expanded=False)
 
+st.caption(f"Chroma collection size: {chroma_count(get_client()):,}")
+
 # -------- UI --------
-tab1, tab2 = st.tabs(["All Candidates", "Semantic Search (Engine + ChromaDB)"])
+tab1, tab2 = st.tabs(["All Candidates", "Semantic Search (Corporate embeddings + ChromaDB)"])
 
 with tab1:
     st.header("All Candidates")
@@ -252,18 +192,17 @@ with tab1:
             st.warning("Candidate not found.")
 
 with tab2:
-    with tab2:
-        st.header("Semantic Search (Corporate embeddings + ChromaDB)")
-        query_text = st.text_input("Query (e.g., 'Senior Python developer 10 years')")
-        if query_text:
-            hits = chroma_query(query_text, embed_client=embed_client, top_k=10, where=None)
-            if not hits:
-                st.warning("No results.")
-            else:
-                for rank, h in enumerate(hits, 1):
-                    st.subheader(f"{rank}. ID {h['id']}")
-                    meta = h.get("metadata") or {}
-                    if meta.get("Category"):
-                        st.caption(f"Category: {meta['Category']}")
-                    doc = h.get("document") or ""
-                    st.write(doc[:1200] + ("…" if len(doc) > 1200 else ""))
+    st.header("Semantic Search (Corporate embeddings + ChromaDB)")
+    query_text = st.text_input("Query (e.g., 'Senior Python developer 10 years')")
+    if query_text:
+        hits = chroma_query(query_text, embed_client=embed_client, top_k=10, where=None)
+        if not hits:
+            st.warning("No results.")
+        else:
+            for rank, h in enumerate(hits, 1):
+                st.subheader(f"{rank}. ID {h['id']}")
+                meta = h.get("metadata") or {}
+                if meta.get("Category"):
+                    st.caption(f"Category: {meta['Category']}")
+                doc = h.get("document") or ""
+                st.write(doc[:1200] + ("…" if len(doc) > 1200 else ""))
