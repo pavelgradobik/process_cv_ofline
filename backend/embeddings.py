@@ -3,7 +3,7 @@ import numpy as np
 from scipy.sparse import spmatrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from backend.config import EMBEDDING_MODEL, EMBED_BATCH
+from backend.config import CORP_EMBED_MODEL, EMBED_BATCH
 from backend.engine_client import EngineClient
 
 ProgressCb = Optional[Callable[[int, int, str], None]]
@@ -45,7 +45,7 @@ class OfflineEmbedder:
         return np.vstack(rows)
 
 class EngineEmbedder:
-    def __init__(self, model: str = EMBEDDING_MODEL, batch: int = EMBED_BATCH):
+    def __init__(self, model: str = CORP_EMBED_MODEL, batch: int = EMBED_BATCH):
         self.client = EngineClient()
         self.model = model
         self.batch = max(1, int(batch))

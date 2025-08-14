@@ -1,7 +1,7 @@
 import requests
 from backend.config import (
-    GENERATIVE_ENGINE_API_KEY,
-    GENERATIVE_ENGINE_BASE_URL,
+    CORP_API_KEY,
+    CORP_EMBED_BASE_URL,
     GENERATIVE_ENGINE_MODEL,
 )
 
@@ -10,9 +10,9 @@ def generative_engine_summary(text: str) -> str:
         "Summarize this candidate's resume in 5 sentences, focusing on their experience, main skills, and professional highlights. Be concise and informative.\n\n"
         f"RESUME:\n{text}\n"
     )
-    url = f"{GENERATIVE_ENGINE_BASE_URL}/chat/completions"
+    url = f"{CORP_EMBED_BASE_URL}/chat/completions"
     headers = {
-        "Authorization": f"Bearer {GENERATIVE_ENGINE_API_KEY}",
+        "Authorization": f"Bearer {CORP_API_KEY}",
         "Content-Type": "application/json",
     }
     data = {

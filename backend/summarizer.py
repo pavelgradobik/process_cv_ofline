@@ -1,5 +1,5 @@
 from typing import List, Dict
-from backend.config import CHAT_MODEL
+from backend.config import GENERATIVE_ENGINE_MODEL
 from backend.engine_client import EngineClient
 
 SYSTEM_PROMPT = (

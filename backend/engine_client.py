@@ -1,18 +1,18 @@
 import requests
 from typing import List, Dict, Any, Optional
 from backend.config import (
-    GENERATIVE_ENGINE_API_KEY,
-    GENERATIVE_ENGINE_BASE_URL,
-    REQUEST_TIMEOUT,
+    CORP_API_KEY,
+    CORP_EMBED_BASE_URL,
+    HTTP_TIMEOUT,
 )
 
 class EngineClient:
     def __init__(self,
                  api_key: Optional[str] = None,
                  base_url: Optional[str] = None,
-                 timeout: float = REQUEST_TIMEOUT):
-        self.api_key = api_key or GENERATIVE_ENGINE_API_KEY
-        self.base_url = (base_url or GENERATIVE_ENGINE_BASE_URL).rstrip("/")
+                 timeout: float = HTTP_TIMEOUT):
+        self.api_key = api_key or CORP_API_KEY
+        self.base_url = (base_url or CORP_EMBED_BASE_URL).rstrip("/")
         self.timeout = timeout
         if not self.api_key or not self.base_url:
             raise RuntimeError("EngineClient missing API key or base URL.")

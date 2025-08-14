@@ -12,7 +12,7 @@ if not _base or not _base.strip():
     _base = "https://generative.engine.capgemini.com/api/v1"
 CORP_EMBED_BASE_URL = _base.rstrip("/")
 
-CORP_API_KEY = (os.getenv("CORP_API_KEY") or "").strip()
+CORP_API_KEY = (os.getenv("GENERATIVE_ENGINE_API_KEY") or "").strip()
 CORP_EMBED_PROVIDER = (os.getenv("CORP_EMBED_PROVIDER") or "sagemaker").strip()
 CORP_EMBED_MODEL = (os.getenv("CORP_EMBED_MODEL") or "sentence-transformers/all-MiniLM-L6-v2").strip()
 
