@@ -9,6 +9,12 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CSV = os.path.join(PROJECT_ROOT, "data", "Resume.csv")
 CSV_PATH = os.getenv("CSV_PATH", DEFAULT_CSV)
 
+#Corporate engine params
+GENERATIVE_ENGINE_API_KEY = os.getenv("GENERATIVE_ENGINE_API_KEY")
+GENERATIVE_ENGINE_BASE_URL = os.getenv("GENERATIVE_ENGINE_BASE_URL")
+GENERATIVE_ENGINE_MODEL = os.getenv("GENERATIVE_ENGINE_MODEL")
+REQUEST_TIMEOUT = 240
+
 # TF-IDF embedder params
 EMBED_BATCH = int(os.getenv("EMBED_BATCH", "128"))
 TFIDF_MAX_FEATURES = int(os.getenv("TFIDF_MAX_FEATURES", "50000"))
