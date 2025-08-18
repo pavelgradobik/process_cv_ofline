@@ -43,4 +43,94 @@ ROLE_SYNONYMS = {
         "people operations", "people ops", "hr generalist", "hr specialist",
         "talent partner", "sourcer", "talent sourcer"
     ],
+    "Java Developer": [
+        "java engineer", "backend java developer", "core java developer", "j2ee developer"
+    ],
+    "Testing": [
+        "qa", "quality assurance", "software tester", "test engineer", "sdet", "automation tester"
+    ],
+    "DevOps Engineer": [
+        "devops", "site reliability engineer", "sre", "cloud engineer", "infrastructure engineer", "ci/cd engineer"
+    ],
+    "Python Developer": [
+        "python engineer", "backend python developer", "django developer", "flask developer"
+    ],
+    "Web Designing": [
+        "web designer", "ui designer", "frontend designer", "html css designer"
+    ],
+    "HR": [
+        "human resources", "hr manager", "talent acquisition", "recruiter", "people operations"
+    ],
+    "Hadoop": [
+        "big data engineer", "hadoop developer", "spark developer", "mapreduce engineer"
+    ],
+    "Blockchain": [
+        "blockchain engineer", "solidity developer", "smart contract developer", "web3 developer"
+    ],
+    "ETL Developer": [
+        "etl engineer", "data engineer", "sql etl developer", "informatica developer"
+    ],
+    "Operations Manager": [
+        "ops manager", "operations lead", "business operations manager"
+    ],
+    "Data Science": [
+        "data scientist", "machine learning engineer", "ml engineer", "ai engineer"
+    ],
+    "Sales": [
+        "sales executive", "business development", "account executive", "sales representative"
+    ],
+    "Mechanical Engineer": [
+        "mechanical design engineer", "automotive engineer", "production engineer"
+    ],
+    "Electrical Engineering": [
+        "electrical engineer", "electronics engineer", "power systems engineer"
+    ],
+    "Arts": [
+        "artist", "fine arts", "graphic artist"
+    ],
+    "Database": [
+        "database administrator", "dba", "sql developer", "database engineer"
+    ],
+    "Civil Engineer": [
+        "civil engineering", "structural engineer", "construction engineer"
+    ],
+    "Advocate": [
+        "lawyer", "legal counsel", "attorney"
+    ],
+    "Business Analyst": [
+        "ba", "product analyst", "systems analyst"
+    ],
+    "Designer": [
+        "graphic designer", "ui designer", "ux designer", "product designer"
+    ],
+    "Health and fitness": [
+        "fitness trainer", "personal trainer", "gym instructor"
+    ],
+    "JavaScript Developer": [
+        "js developer", "frontend developer", "react developer", "angular developer", "nodejs developer"
+    ],
+    "Automation Testing": [
+        "qa automation", "automation tester", "sdet", "test automation engineer"
+    ],
+    "SAP Developer": [
+        "sap engineer", "sap consultant", "sap abap developer"
+    ],
+    "Project Manager": [
+        "pm", "technical project manager", "program manager", "delivery manager"
+    ],
+    "PMO": [
+        "project management office", "pmo analyst", "pmo coordinator"
+    ],
+    "Electrical Engineer": [
+        "electrical engineering", "electronics engineer", "power engineer"
+    ],
+    "Chartered Accountant": [
+        "ca", "accountant", "financial auditor"
+    ],
+    "Business Development": [
+        "bd", "sales development", "biz dev", "partnerships manager"
+    ],
+    "Civil Engineering": [
+        "civil engineer", "construction engineer", "structural engineer"
+    ],
 }
