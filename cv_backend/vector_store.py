@@ -7,7 +7,7 @@ from chromadb.config import Settings
 
 from cv_backend.query_parser import build_where
 
-__VERSION__ = "vector_store/1.3.0"
+__VERSION__ = "vector_store/1.4.0"
 
 DEFAULT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -38,12 +38,15 @@ def reset_collection(client=None):
         pass
     return client.create_collection(name=COLLECTION, metadata={"hnsw:space": "cosine"})
 
+# ----------------- helpers -----------------
+
 def _as_list(x):
     if isinstance(x, np.ndarray):
         return x.tolist()
     return x
 
-def _sanitize_meta_scalar(v: Any) -> Any:
+def _to_primitive(v: Any) -> Any:
+    # convert numpy scalars to native
     if isinstance(v, (np.integer,)):
         return int(v)
     if isinstance(v, (np.floating,)):
@@ -52,26 +55,26 @@ def _sanitize_meta_scalar(v: Any) -> Any:
         return bool(v)
     if isinstance(v, (str, int, float, bool)) or v is None:
         return v
+    # everything else (lists/dicts/objects) → JSON string
     try:
         return json.dumps(v, ensure_ascii=False)
     except Exception:
         return str(v)
 
 def _sanitize_metadatas(metas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    clean = []
+    cleaned: List[Dict[str, Any]] = []
     for m in metas:
         if not isinstance(m, dict):
-            clean.append({"_meta": _sanitize_meta_scalar(m)})
+            cleaned.append({"_meta": _to_primitive(m)})
             continue
-        clean.append({k: _sanitize_meta_scalar(v) for k, v in m.items()})
-    return clean
+        cleaned.append({k: _to_primitive(v) for k, v in m.items()})
+    return cleaned
 
 def _index_batches(col, ids: List[str], docs: List[str], metas: List[Dict], vecs: np.ndarray, batch: int) -> int:
     n = len(ids)
     total = 0
     batch = max(1, int(batch))
-
-    metas = _sanitize_metadatas(metas)
+    metas = _sanitize_metadatas(metas)  # ← sanitize once
 
     for start in range(0, n, batch):
         end = min(start + batch, n)
@@ -84,7 +87,19 @@ def _index_batches(col, ids: List[str], docs: List[str], metas: List[Dict], vecs
         total += (end - start)
     return total
 
+# --------------- public API ----------------
+
 def index_records(*args, **kwargs) -> int:
+    """
+    Backward-compatible indexer.
+
+    (A) NEW STYLE:
+        index_records(records, vectors, client=None, batch=100)
+
+    (B) OLD STYLE:
+        index_records(client, ids, documents, metadatas, vectors, batch=100)
+    """
+    # NEW style: first arg is list[dict]
     if len(args) >= 2 and isinstance(args[0], list):
         records: List[Dict[str, Any]] = args[0]
         vectors: np.ndarray = args[1]
@@ -102,6 +117,7 @@ def index_records(*args, **kwargs) -> int:
         metas = [r.get("metadata", {}) for r in records]
         return _index_batches(col, ids, docs, metas, vectors, batch)
 
+    # OLD style:
     if len(args) < 5:
         raise TypeError(
             "index_records expected either (records, vectors, ...) or (client, ids, documents, metadatas, vectors, ...)"
@@ -131,16 +147,19 @@ def query_with_embedding(
     enriched_query_text: str,
     min_years: Optional[float],
     role_terms: List[str],
-    top_k: int = 10,
+    top_k: int = 8,
 ) -> List[Dict]:
     col = get_collection()
     where = build_where(min_years)
+    # Chroma expects None when no filter; {} will raise
+    if not where:
+        where = None
 
     res = col.query(
         query_embeddings=[query_embedding.tolist()],
         n_results=max(top_k, 20),
         where=where,
-        include=["documents", "metadatas", "distances"],  # ← fixed
+        include=["documents", "metadatas", "distances"],  # never include "ids"
     )
 
     ids = res.get("ids", [[]])[0]

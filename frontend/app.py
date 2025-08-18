@@ -56,8 +56,7 @@ def to_results_dataframe(hits: list[dict]) -> pd.DataFrame:
 # ---------- app layout ----------
 st.set_page_config(page_title="Resume Search (Offline)", layout="wide")
 st.title("Resume Search (Offline)")
-
-# Show which vector_store file was actually imported (debug/sanity)
+from cv_backend import vector_store as vs
 st.caption(f"Using vector_store from: `{vs.__file__}` (version: {getattr(vs, '__VERSION__', 'unknown')})")
 
 # Session state
