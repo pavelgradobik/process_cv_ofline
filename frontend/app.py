@@ -1,8 +1,10 @@
 import os
 import sys
-import io
+import time
 from datetime import datetime
 import urllib.request
+import io
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -23,19 +25,11 @@ from cv_backend.query_parser import extract_min_years, expand_roles, enrich_quer
 
 
 # ---------- helpers ----------
-
 def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
-def save_uploaded_csv(uploaded_file, target_path: str) -> str:
-    ensure_dir(os.path.dirname(target_path))
-    with open(target_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    return target_path
-
 def download_csv(url: str, target_path: str) -> str:
     ensure_dir(os.path.dirname(target_path))
-    # use stdlib (no extra deps)
     with urllib.request.urlopen(url) as resp:
         data = resp.read()
     with open(target_path, "wb") as f:
@@ -54,13 +48,13 @@ def to_results_dataframe(hits: list[dict]) -> pd.DataFrame:
             "Skills": meta.get("Skills"),
             "years_experience": meta.get("years_experience"),
             "Category": meta.get("Category"),
+            "roles": meta.get("roles"),
             "text": h.get("document"),
         })
     return pd.DataFrame(rows)
 
 
 # ---------- app layout ----------
-
 st.set_page_config(page_title="Resume Search (Offline)", layout="wide")
 st.title("Resume Search (Offline)")
 
@@ -84,8 +78,7 @@ ensure_dir(DATA_DIR)
 ensure_dir(UPLOADS_DIR)
 ensure_dir(DOWNLOADS_DIR)
 
-# ---------- Data source controls ----------
-
+# ---------- Data source ----------
 with st.expander("Data source", expanded=True):
     source_choice = st.radio(
         "Choose data source",
@@ -104,125 +97,129 @@ with st.expander("Data source", expanded=True):
         if up is not None:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             target_path = os.path.join(UPLOADS_DIR, f"Resume_upload_{ts}.csv")
-            save_uploaded_csv(up, target_path)
+            with st.status("Saving uploaded file...", expanded=False) as s:
+                ensure_dir(os.path.dirname(target_path))
+                with open(target_path, "wb") as f:
+                    f.write(up.getbuffer())
+                s.update(state="complete", label=f"Saved to `{target_path}`")
             st.session_state.records_path = target_path
-            st.success(f"Uploaded and set dataset: `{target_path}`")
 
     elif source_choice == "Download CSV from URL":
         url = st.text_input("CSV URL", placeholder="https://.../Resume.csv")
-        col_d1, col_d2 = st.columns([1, 3])
-        with col_d1:
-            if st.button("Download"):
-                if not url.strip():
-                    st.error("Please enter a URL.")
-                else:
+        if st.button("Download"):
+            if not url.strip():
+                st.error("Please enter a URL.")
+            else:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                target_path = os.path.join(DOWNLOADS_DIR, f"Resume_download_{ts}.csv")
+                with st.status("Downloading CSV...", expanded=True) as s:
                     try:
-                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        target_path = os.path.join(DOWNLOADS_DIR, f"Resume_download_{ts}.csv")
                         download_csv(url.strip(), target_path)
+                        s.update(state="complete", label=f"Downloaded to `{target_path}`")
                         st.session_state.records_path = target_path
-                        st.success(f"Downloaded and set dataset: `{target_path}`")
                     except Exception as e:
+                        s.update(state="error", label="Download failed")
                         st.exception(e)
-        with col_d2:
-            st.caption("We use Python's standard library (urllib) to fetch the file; no extra dependencies required.")
 
 # ---------- Load & preview ----------
-
 with st.expander("Load & preview", expanded=True):
-    st.write(f"Current dataset: `{st.session_state.records_path}`")
-    records, stats = load_resumes_with_stats(st.session_state.records_path)
-    if "error" in stats:
-        st.error(stats["error"])
-    else:
-        st.success(
-            f"Loaded {stats.get('rows_used', 0)} / {stats.get('total_rows_raw', 0)} usable resumes "
-            f"(missing IDs: {stats.get('rows_missing_id', 0)})"
-        )
-        # tiny preview of first 3 records
-        if records:
-            sample = []
-            for r in records[:3]:
-                meta = r["metadata"]
-                sample.append({
-                    "ID": meta.get("ID"),
-                    "Title": meta.get("Title"),
-                    "years_experience": meta.get("years_experience"),
-                    "Skills": (meta.get("Skills") or "")[:120] + ("..." if meta.get("Skills") and len(meta["Skills"]) > 120 else ""),
-                    "text": (r.get("text") or "")[:160] + ("..." if r.get("text") and len(r["text"]) > 160 else ""),
-                })
-            st.table(pd.DataFrame(sample))
+    with st.status("Loading dataset...", expanded=False) as s:
+        records, stats = load_resumes_with_stats(st.session_state.records_path)
+        if "error" in stats:
+            s.update(state="error", label="Failed to load dataset")
+            st.error(stats["error"])
+        else:
+            s.update(state="complete", label=f"Loaded {stats.get('rows_used', 0)} / {stats.get('total_rows_raw', 0)} resumes")
+            # tiny preview
+            if records:
+                df_preview = pd.DataFrame([{
+                    "ID": r["metadata"].get("ID"),
+                    "Title": r["metadata"].get("Title"),
+                    "Years": r["metadata"].get("years_experience"),
+                    "Skills": (r["metadata"].get("Skills") or "")[:120] + ("..." if r["metadata"].get("Skills") and len(r["metadata"]["Skills"]) > 120 else ""),
+                    "Text": (r.get("text") or "")[:160] + ("..." if r.get("text") and len(r["text"]) > 160 else ""),
+                } for r in records[:3]])
+                st.table(df_preview)
 
-# ---------- Indexing ----------
-
+# ---------- Index ----------
 st.markdown("---")
 st.subheader("Index")
 
-col_i1, col_i2 = st.columns([1, 3])
-with col_i1:
-    rebuild = st.button("Build / Rebuild Index", type="primary")
-with col_i2:
-    st.caption("Indexes the current dataset into ChromaDB using TF-IDF vectors.")
-
-if rebuild:
+if st.button("Build / Rebuild Index", type="primary", use_container_width=False):
     if not records:
         st.error("No records to index.")
     else:
-        texts = [r["text"] for r in records]
-        embedder = OfflineEmbedder()
-        doc_vecs = embedder.fit_transform(texts)
+        with st.status("Building embeddings...", expanded=True) as s:
+            texts = [r["text"] for r in records]
+            embedder = OfflineEmbedder()
+            doc_vecs = embedder.fit_transform(texts)
+            s.update(state="complete", label=f"Built embeddings for {len(texts)} documents")
 
-        client = get_client()
-        reset_collection(client)
-        total_indexed = index_records(records, doc_vecs, client=client, batch=100)
+        with st.status("Indexing to Chroma...", expanded=True) as s:
+            client = get_client()
+            reset_collection(client)
+
+            # progress bar while adding batches
+            total = len(records)
+            batch = 100
+            prog = st.progress(0)
+            indexed = 0
+            # use the same index_records but simulate progress by chunking the call
+            for start in range(0, total, batch):
+                end = min(start + batch, total)
+                chunk_records = records[start:end]
+                chunk_vecs = doc_vecs[start:end]
+                added = index_records(chunk_records, chunk_vecs, client=client, batch=batch)
+                indexed += added
+                prog.progress(min(1.0, indexed / max(1, total)))
+                time.sleep(0.02)  # tiny delay so the bar visibly moves
+
+            s.update(state="complete", label=f"Indexed {indexed:,} resumes")
 
         st.session_state.embedder = embedder
         st.session_state.indexed = True
-        st.success(f"Indexed {total_indexed:,} resumes.")
 
 # ---------- Search ----------
-
 st.markdown("---")
 st.subheader("Search")
 
 query = st.text_input("Query", placeholder="e.g., python developer with 5 years experience, django")
 top_k = st.slider("Top K", 5, 50, 10, 1)
-go = st.button("Search")
 
-if go:
+if st.button("Search", use_container_width=False):
     if not st.session_state.indexed or st.session_state.embedder is None:
         st.error("Index not built yet. Click 'Build / Rebuild Index' first.")
     else:
-        min_years = extract_min_years(query)
-        role_terms = expand_roles(query)
-        enriched = enrich_query_text(query, role_terms) or query
+        with st.status("Searching...", expanded=False) as s:
+            min_years = extract_min_years(query)
+            role_terms = expand_roles(query)
+            enriched = enrich_query_text(query, role_terms) or query
+            qvec = st.session_state.embedder.transform([enriched])[0]
 
-        qvec = st.session_state.embedder.transform([enriched])[0]
-        hits = query_with_embedding(
-            query_embedding=qvec,
-            enriched_query_text=enriched,
-            min_years=min_years,
-            role_terms=role_terms,
-            top_k=top_k,
-        )
+            hits = query_with_embedding(
+                query_embedding=qvec,
+                enriched_query_text=enriched,
+                min_years=min_years,
+                role_terms=role_terms,
+                top_k=top_k,
+            )
+            st.session_state.last_hits = hits or []
 
-        st.session_state.last_hits = hits or []
+            if not hits:
+                s.update(state="complete", label="No results")
+            else:
+                s.update(state="complete", label=f"Found {len(hits)} results")
 
-        if not hits:
-            st.warning("No results.")
-        else:
-            st.success(f"Found {len(hits)} results.")
-            for h in hits:
-                meta = h["metadata"] or {}
-                st.write(f"**ID**: {meta.get('ID', '—')}  |  **Score**: {h['similarity']}")
-                st.write(f"**Title**: {meta.get('Title', '—')}")
-                st.write(f"**Years**: {meta.get('years_experience', '—')}  |  **Skills**: {meta.get('Skills', '—')}")
-                with st.expander("Text"):
-                    st.write(h["document"])
-                st.markdown("---")
+        for h in st.session_state.last_hits:
+            meta = h["metadata"] or {}
+            st.write(f"**ID**: {meta.get('ID', '—')}  |  **Score**: {h['similarity']}")
+            st.write(f"**Title**: {meta.get('Title', '—')}")
+            st.write(f"**Years**: {meta.get('years_experience', '—')}  |  **Skills**: {meta.get('Skills', '—')}")
+            with st.expander("Text"):
+                st.write(h["document"])
+            st.markdown("---")
 
 # ---------- Export results ----------
-
 if st.session_state.last_hits:
     df = to_results_dataframe(st.session_state.last_hits)
     csv_bytes = df.to_csv(index=False).encode("utf-8")
@@ -231,5 +228,5 @@ if st.session_state.last_hits:
         data=csv_bytes,
         file_name=f"search_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
         mime="text/csv",
-        use_container_width=True
+        use_container_width=True,
     )

@@ -1,4 +1,5 @@
 import os
+import json
 from typing import List, Dict, Optional, Tuple, Any
 import numpy as np
 import chromadb
@@ -6,7 +7,7 @@ from chromadb.config import Settings
 
 from cv_backend.query_parser import build_where
 
-__VERSION__ = "vector_store/1.1.0"
+__VERSION__ = "vector_store/1.2.0"
 
 DEFAULT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -42,10 +43,29 @@ def _as_list(x):
         return x.tolist()
     return x
 
+def _sanitize_meta_value(v: Any) -> Any:
+    if isinstance(v, (str, int, float, bool)) or v is None:
+        return v
+    try:
+        return json.dumps(v, ensure_ascii=False)
+    except Exception:
+        return str(v)
+
+def _sanitize_metadatas(metas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    clean = []
+    for m in metas:
+        if not isinstance(m, dict):
+            clean.append({"_meta": _sanitize_meta_value(m)})
+            continue
+        clean.append({k: _sanitize_meta_value(v) for k, v in m.items()})
+    return clean
+
 def _index_batches(col, ids: List[str], docs: List[str], metas: List[Dict], vecs: np.ndarray, batch: int) -> int:
     n = len(ids)
     total = 0
     batch = max(1, int(batch))
+    metas = _sanitize_metadatas(metas)
+
     for start in range(0, n, batch):
         end = min(start + batch, n)
         col.add(
@@ -58,15 +78,6 @@ def _index_batches(col, ids: List[str], docs: List[str], metas: List[Dict], vecs
     return total
 
 def index_records(*args, **kwargs) -> int:
-    """
-    Backward-compatible indexer.
-
-    (A) NEW STYLE:
-        index_records(records, vectors, client=None, batch=100)
-
-    (B) OLD STYLE:
-        index_records(client, ids, documents, metadatas, vectors, batch=100)
-    """
     if len(args) >= 2 and isinstance(args[0], list):
         records: List[Dict[str, Any]] = args[0]
         vectors: np.ndarray = args[1]

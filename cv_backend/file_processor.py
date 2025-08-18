@@ -67,7 +67,7 @@ def _normalize_cols(df: pd.DataFrame) -> pd.DataFrame:
     if pick(alias["category"]):    out["Category"]    = df[pick(alias["category"])]
     return out
 
-def _extract_roles(text: str) -> List[str]:
+def _extract_roles_list(text: str) -> List[str]:
     s = set()
     for m in ROLE_RE.finditer(text or ""):
         s.add(m.group(0).lower())
@@ -132,7 +132,8 @@ def load_resumes_with_stats(path: str | None = None) -> Tuple[List[Dict], Dict]:
             continue
         any_text += 1
 
-        roles = _extract_roles(" ".join([title, skills, text_html, text_str]))
+        roles_list = _extract_roles_list(" ".join([title, skills, text_html, text_str]))
+        roles_str = ", ".join(roles_list) if roles_list else ""
         years = _extract_years_any(" ".join([title, skills, text_html, text_str]))
 
         records.append({
@@ -143,8 +144,8 @@ def load_resumes_with_stats(path: str | None = None) -> Tuple[List[Dict], Dict]:
                 "Category": category,
                 "Title": title,
                 "Skills": skills,
-                "roles": roles,
-                "years_experience": years,
+                "roles": roles_str,
+                "years_experience": float(years),
             },
         })
 
