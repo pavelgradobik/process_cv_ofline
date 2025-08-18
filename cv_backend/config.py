@@ -5,12 +5,15 @@ load_dotenv()
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Path to CSV (you can override with CSV_PATH env)
 DEFAULT_CSV = os.path.join(PROJECT_ROOT, "data", "Resume.csv")
 CSV_PATH = os.getenv("CSV_PATH", DEFAULT_CSV)
 
+# TF-IDF embedder params
 EMBED_BATCH = int(os.getenv("EMBED_BATCH", "128"))
 TFIDF_MAX_FEATURES = int(os.getenv("TFIDF_MAX_FEATURES", "50000"))
 
+# Role synonyms used for better recall in queries
 ROLE_SYNONYMS = {
     "designer": [
         "designer", "product designer", "ux designer", "ui designer",
@@ -26,4 +29,12 @@ ROLE_SYNONYMS = {
     "qa": ["qa", "qa engineer", "test engineer", "quality assurance"],
     "frontend": ["frontend developer", "frontend engineer", "react developer", "vue developer"],
     "backend": ["backend developer", "backend engineer", "server-side developer"],
+
+    # NEW: broaden HR-related queries like "HR 20+ years"
+    "hr": [
+        "hr", "human resources", "hr manager", "hrbp", "hr business partner",
+        "talent acquisition", "recruiter", "technical recruiter",
+        "people operations", "people ops", "hr generalist", "hr specialist",
+        "talent partner", "sourcer", "talent sourcer"
+    ],
 }

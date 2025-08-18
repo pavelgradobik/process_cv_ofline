@@ -3,7 +3,6 @@ import sys
 import time
 from datetime import datetime
 import urllib.request
-import io
 
 import streamlit as st
 import pandas as pd
@@ -90,7 +89,10 @@ with st.expander("Data source", expanded=True):
     if source_choice == "Use existing CSV":
         st.info(f"Using CSV at: `{st.session_state.records_path}`")
         if st.session_state.records_path != DEFAULT_CSV_PATH:
-            st.button("Reset to default CSV", on_click=lambda: st.session_state.update(records_path=DEFAULT_CSV_PATH))
+            st.button(
+                "Reset to default CSV",
+                on_click=lambda: st.session_state.update(records_path=DEFAULT_CSV_PATH)
+            )
 
     elif source_choice == "Upload CSV":
         up = st.file_uploader("Upload a CSV of resumes", type=["csv"])
@@ -130,7 +132,6 @@ with st.expander("Load & preview", expanded=True):
             st.error(stats["error"])
         else:
             s.update(state="complete", label=f"Loaded {stats.get('rows_used', 0)} / {stats.get('total_rows_raw', 0)} resumes")
-            # tiny preview
             if records:
                 df_preview = pd.DataFrame([{
                     "ID": r["metadata"].get("ID"),
@@ -159,12 +160,10 @@ if st.button("Build / Rebuild Index", type="primary", use_container_width=False)
             client = get_client()
             reset_collection(client)
 
-            # progress bar while adding batches
             total = len(records)
             batch = 100
             prog = st.progress(0)
             indexed = 0
-            # use the same index_records but simulate progress by chunking the call
             for start in range(0, total, batch):
                 end = min(start + batch, total)
                 chunk_records = records[start:end]
@@ -172,7 +171,7 @@ if st.button("Build / Rebuild Index", type="primary", use_container_width=False)
                 added = index_records(chunk_records, chunk_vecs, client=client, batch=batch)
                 indexed += added
                 prog.progress(min(1.0, indexed / max(1, total)))
-                time.sleep(0.02)  # tiny delay so the bar visibly moves
+                time.sleep(0.02)
 
             s.update(state="complete", label=f"Indexed {indexed:,} resumes")
 
@@ -183,8 +182,13 @@ if st.button("Build / Rebuild Index", type="primary", use_container_width=False)
 st.markdown("---")
 st.subheader("Search")
 
-query = st.text_input("Query", placeholder="e.g., python developer with 5 years experience, django")
-top_k = st.slider("Top K", 5, 50, 10, 1)
+query = st.text_input(
+    "Query",
+    placeholder="e.g., hr manager with more than 20 years, recruiter 10+ years, people ops"
+)
+
+# Fixed low Top-K, as requested
+TOP_K_FIXED = 8
 
 if st.button("Search", use_container_width=False):
     if not st.session_state.indexed or st.session_state.embedder is None:
@@ -201,7 +205,7 @@ if st.button("Search", use_container_width=False):
                 enriched_query_text=enriched,
                 min_years=min_years,
                 role_terms=role_terms,
-                top_k=top_k,
+                top_k=TOP_K_FIXED,
             )
             st.session_state.last_hits = hits or []
 

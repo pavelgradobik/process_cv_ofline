@@ -7,7 +7,7 @@ from chromadb.config import Settings
 
 from cv_backend.query_parser import build_where
 
-__VERSION__ = "vector_store/1.2.0"
+__VERSION__ = "vector_store/1.3.0"
 
 DEFAULT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -43,7 +43,13 @@ def _as_list(x):
         return x.tolist()
     return x
 
-def _sanitize_meta_value(v: Any) -> Any:
+def _sanitize_meta_scalar(v: Any) -> Any:
+    if isinstance(v, (np.integer,)):
+        return int(v)
+    if isinstance(v, (np.floating,)):
+        return float(v)
+    if isinstance(v, (np.bool_,)):
+        return bool(v)
     if isinstance(v, (str, int, float, bool)) or v is None:
         return v
     try:
@@ -55,15 +61,16 @@ def _sanitize_metadatas(metas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     clean = []
     for m in metas:
         if not isinstance(m, dict):
-            clean.append({"_meta": _sanitize_meta_value(m)})
+            clean.append({"_meta": _sanitize_meta_scalar(m)})
             continue
-        clean.append({k: _sanitize_meta_value(v) for k, v in m.items()})
+        clean.append({k: _sanitize_meta_scalar(v) for k, v in m.items()})
     return clean
 
 def _index_batches(col, ids: List[str], docs: List[str], metas: List[Dict], vecs: np.ndarray, batch: int) -> int:
     n = len(ids)
     total = 0
     batch = max(1, int(batch))
+
     metas = _sanitize_metadatas(metas)
 
     for start in range(0, n, batch):
@@ -133,7 +140,7 @@ def query_with_embedding(
         query_embeddings=[query_embedding.tolist()],
         n_results=max(top_k, 20),
         where=where,
-        include=["documents", "metadatas", "distances", "ids"]
+        include=["documents", "metadatas", "distances"],  # ← fixed
     )
 
     ids = res.get("ids", [[]])[0]
@@ -143,9 +150,12 @@ def query_with_embedding(
 
     items: List[Tuple[str, float, Dict, str]] = []
     for i in range(len(ids)):
+        _id = ids[i]
+        doc = docs[i]
+        meta = metas[i] or {}
         base = 1.0 - float(dists[i])
-        boost = _role_boost_score(metas[i] or {}, docs[i], role_terms)
-        items.append((ids[i], base + boost, metas[i], docs[i]))
+        boost = _role_boost_score(meta, doc, role_terms)
+        items.append((_id, base + boost, meta, doc))
     items.sort(key=lambda x: x[1], reverse=True)
     items = items[:top_k]
 
