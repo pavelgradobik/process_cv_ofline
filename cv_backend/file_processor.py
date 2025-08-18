@@ -13,6 +13,7 @@ ROLE_HINTS = [
     r"\bbackend\s+(developer|engineer)\b",
     r"\bfrontend\s+(developer|engineer)\b",
     r"\bqa(\s+engineer)?\b",
+    r"\bhr\b|\bhuman\s+resources\b|\brecruiter\b|\btalent\s+acquisition\b|\bpeople\s+ops?\b",
 ]
 ROLE_RE = re.compile("|".join(ROLE_HINTS), re.IGNORECASE)
 YEARS_ANY_RE = re.compile(r"(?<!\d)(\d{1,2}(?:\.\d+)?)\s*(?:\+?\s*)?(?:years?|yrs?)", re.IGNORECASE)
@@ -47,9 +48,9 @@ def _normalize_cols(df: pd.DataFrame) -> pd.DataFrame:
         "id":          ["id", "candidate_id", "candidateid"],
         "resume_html": ["resume_html", "resume html", "resumehtml", "html"],
         "resume_str":  ["resume_str", "resume str", "resumestr", "text"],
-        "title":       ["title", "current_title", "position"],
+        "title":       ["title", "current_title", "position", "job_title", "headline"],
         "skills":      ["skills", "skillset", "tech_stack"],
-        "category":    ["category", "profession", "role", "dept"],
+        "category":    ["category", "profession", "role", "dept", "department"],
     }
 
     def pick(cands):
@@ -86,6 +87,17 @@ def _non_empty(v) -> bool:
     import pandas as pd
     return not pd.isna(v) and str(v).strip() != ""
 
+def _title_fallback(title: str, skills: str, text_html: str, text_str: str, roles_list: List[str]) -> str:
+    if title and title.strip():
+        return title.strip()
+    if roles_list:
+        return roles_list[0].title()
+    blob = " ".join([text_html, text_str]).strip()
+    if blob:
+        head = blob.split("\n")[0][:120]
+        return head if head else "Candidate"
+    return "Candidate"
+
 def load_resumes_with_stats(path: str | None = None) -> Tuple[List[Dict], Dict]:
     p = path or CSV_PATH
     if not os.path.exists(p):
@@ -110,7 +122,6 @@ def load_resumes_with_stats(path: str | None = None) -> Tuple[List[Dict], Dict]:
         }
 
     records: List[Dict] = []
-    any_text = 0
     missing_id = 0
     for _, r in df.iterrows():
         cid = str(r["ID"]) if "ID" in df.columns and _non_empty(r["ID"]) else None
@@ -120,21 +131,21 @@ def load_resumes_with_stats(path: str | None = None) -> Tuple[List[Dict], Dict]:
 
         raw_html = r.get("Resume_html")
         raw_str  = r.get("Resume_str")
-        title    = (r.get("Title") or "").strip() if "Title" in df.columns else ""
+        title_in = (r.get("Title") or "").strip() if "Title" in df.columns else ""
         skills   = (r.get("Skills") or "").strip() if "Skills" in df.columns else ""
         category = (r.get("Category") or "").strip() if "Category" in df.columns else ""
 
         text_html = _html_to_text(raw_html) if _non_empty(raw_html) else ""
         text_str  = str(raw_str).strip() if _non_empty(raw_str) else ""
 
-        full_text = "\n".join([t for t in [title, skills, text_html, text_str] if t])
+        full_text = "\n".join([t for t in [title_in, skills, text_html, text_str] if t])
         if not full_text:
             continue
-        any_text += 1
 
-        roles_list = _extract_roles_list(" ".join([title, skills, text_html, text_str]))
+        roles_list = _extract_roles_list(" ".join([title_in, skills, text_html, text_str]))
         roles_str = ", ".join(roles_list) if roles_list else ""
-        years = _extract_years_any(" ".join([title, skills, text_html, text_str]))
+        years = _extract_years_any(" ".join([title_in, skills, text_html, text_str]))
+        title = _title_fallback(title_in, skills, text_html, text_str, roles_list)
 
         records.append({
             "id": cid,
