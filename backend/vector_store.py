@@ -1,9 +1,14 @@
 import os
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 import numpy as np
 import chromadb
 from chromadb.config import Settings
-from backend.query_parser import extract_min_years, expand_roles, build_where, enrich_query_text
+
+from backend.query_parser import (
+    extract_min_years, expand_roles, build_where, enrich_query_text
+)
+
+__VERSION__ = "vector_store/1.1.0"
 
 DEFAULT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -14,18 +19,17 @@ COLLECTION = "cv_embeddings"
 def get_client(persist_dir: Optional[str] = None):
     persist_dir = persist_dir or DEFAULT_DIR
     os.makedirs(persist_dir, exist_ok=True)
-    client = chromadb.PersistentClient(path=persist_dir, settings=Settings(anonymized_telemetry=False))
-    return client
+    return chromadb.PersistentClient(
+        path=persist_dir,
+        settings=Settings(anonymized_telemetry=False)
+    )
 
 def get_collection(client=None):
     client = client or get_client()
     try:
         return client.get_collection(COLLECTION)
     except Exception:
-        return client.create_collection(
-            name=COLLECTION,
-            metadata={"hnsw:space": "cosine"}
-        )
+        return client.create_collection(name=COLLECTION, metadata={"hnsw:space": "cosine"})
 
 def reset_collection(client=None):
     client = client or get_client()
@@ -35,16 +39,60 @@ def reset_collection(client=None):
         pass
     return client.create_collection(name=COLLECTION, metadata={"hnsw:space": "cosine"})
 
-def index_records(
-    client,
-    ids: List[str],
-    documents: List[str],
-    metadatas: List[Dict],
-    vectors: np.ndarray
-):
+def _as_list(x):
+    if isinstance(x, np.ndarray):
+        return x.tolist()
+    return x
+
+def _index_batches(col, ids: List[str], docs: List[str], metas: List[Dict], vecs: np.ndarray, batch: int) -> int:
+    n = len(ids)
+    total = 0
+    batch = max(1, int(batch))
+    for start in range(0, n, batch):
+        end = min(start + batch, n)
+        col.add(
+            ids=ids[start:end],
+            documents=docs[start:end],
+            metadatas=metas[start:end],
+            embeddings=_as_list(vecs[start:end]),
+        )
+        total += (end - start)
+    return total
+
+def index_records(*args, **kwargs) -> int:
+
+    if len(args) >= 2 and isinstance(args[0], list):
+        records: List[Dict[str, Any]] = args[0]
+        vectors: np.ndarray = args[1]
+        client = kwargs.get("client", None)
+        batch = kwargs.get("batch", 100)
+
+        if vectors is None:
+            raise ValueError("vectors must not be None")
+        if len(records) != len(vectors):
+            raise ValueError(f"records ({len(records)}) and vectors ({len(vectors)}) length mismatch")
+
+        col = get_collection(client or get_client())
+        ids = [r["id"] for r in records]
+        docs = [r["text"] for r in records]
+        metas = [r.get("metadata", {}) for r in records]
+        return _index_batches(col, ids, docs, metas, vectors, batch)
+
+    if len(args) < 5:
+        raise TypeError(
+            "index_records expected either (records, vectors, ...) or (client, ids, documents, metadatas, vectors, ...)"
+        )
+    client = args[0]
+    ids = args[1]
+    docs = args[2]
+    metas = args[3]
+    vectors = args[4]
+    batch = kwargs.get("batch", 100)
+
     col = get_collection(client)
-    vecs = vectors.tolist()
-    col.add(ids=ids, documents=documents, metadatas=metadatas, embeddings=vecs)
+    if not (len(ids) == len(docs) == len(metas) == len(vectors)):
+        raise ValueError("ids, documents, metadatas, and vectors must have the same length")
+    return _index_batches(col, ids, docs, metas, vectors, batch)
 
 def _role_boost_score(meta: Dict, doc: str, role_terms: List[str]) -> float:
     hay = f"{meta.get('Title') or ''} {meta.get('Skills') or ''} {doc or ''}".lower()
@@ -52,25 +100,23 @@ def _role_boost_score(meta: Dict, doc: str, role_terms: List[str]) -> float:
     for t in role_terms:
         if t.lower() in hay:
             score += 0.05
-    return min(score, 0.5)  # cap
+    return min(score, 0.5)
 
-def query(
-    query_text: str,
+def query_with_embedding(
+    query_embedding: np.ndarray,
+    enriched_query_text: str,
+    min_years: Optional[float],
+    role_terms: List[str],
     top_k: int = 10,
 ) -> List[Dict]:
-    client = get_client()
-    col = get_collection(client)
-
-    min_years = extract_min_years(query_text)
-    role_terms = expand_roles(query_text)
+    col = get_collection()
     where = build_where(min_years)
-    enriched = enrich_query_text(query_text, role_terms) or query_text
 
     res = col.query(
-        query_texts=[enriched],
+        query_embeddings=[query_embedding.tolist()],
         n_results=max(top_k, 20),
         where=where,
-        include=["documents", "metadatas", "distances", "embeddings", "ids"]
+        include=["documents", "metadatas", "distances", "ids"]
     )
 
     ids = res.get("ids", [[]])[0]
@@ -80,30 +126,17 @@ def query(
 
     items: List[Tuple[str, float, Dict, str]] = []
     for i in range(len(ids)):
-        _id = ids[i]
-        doc = docs[i]
-        meta = metas[i] or {}
         base = 1.0 - float(dists[i])
-        boost = _role_boost_score(meta, doc, role_terms)
-        items.append((_id, base + boost, meta, doc))
-
+        boost = _role_boost_score(metas[i] or {}, docs[i], role_terms)
+        items.append((ids[i], base + boost, metas[i], docs[i]))
     items.sort(key=lambda x: x[1], reverse=True)
     items = items[:top_k]
 
-    hits = []
-    for _id, score, meta, doc in items:
-        hits.append({
+    return [
+        {
             "id": _id,
             "document": doc,
             "metadata": meta,
             "similarity": round(score, 4),
-        })
-    return hits
-
-def search_by_text(query_text: str, top_k: int = 10) -> List[Dict]:
-    return query(query_text, top_k=top_k)
-
-def count(client=None):
-    client = client or get_client()
-    col = get_collection(client)
-    return col.count()
+        } for _id, score, meta, doc in items
+    ]
