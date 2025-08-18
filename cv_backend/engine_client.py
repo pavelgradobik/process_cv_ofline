@@ -1,6 +1,6 @@
 import requests
 from typing import List, Dict, Any, Optional
-from backend.config import (
+from cv_backend.config import (
     GENERATIVE_ENGINE_API_KEY,
     GENERATIVE_ENGINE_BASE_URL,
     REQUEST_TIMEOUT,

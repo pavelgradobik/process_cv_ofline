@@ -1,5 +1,5 @@
 import requests
-from backend.config import (
+from cv_backend.config import (
     GENERATIVE_ENGINE_API_KEY,
     GENERATIVE_ENGINE_BASE_URL,
     GENERATIVE_ENGINE_MODEL,

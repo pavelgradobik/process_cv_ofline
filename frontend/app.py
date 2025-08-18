@@ -1,19 +1,25 @@
+import os
+import sys
 import streamlit as st
 import numpy as np
 
-from backend.config import CSV_PATH
-from backend.file_processor import load_resumes_with_stats
-from backend.embeddings import OfflineEmbedder
-from backend import vector_store as vs
-from backend.vector_store import (
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from cv_backend.config import CSV_PATH
+from cv_backend.file_processor import load_resumes_with_stats
+from cv_backend.embeddings import OfflineEmbedder
+from cv_backend import vector_store as vs
+from cv_backend.vector_store import (
     get_client, reset_collection, index_records, query_with_embedding
 )
-from backend.query_parser import extract_min_years, expand_roles, enrich_query_text
+from cv_backend.query_parser import extract_min_years, expand_roles, enrich_query_text
 
 st.set_page_config(page_title="Resume Search (Offline)", layout="wide")
 st.title("Resume Search (Offline)")
 
-# Show which vector_store file was actually imported
+# Show the exact module path being used
 st.caption(f"Using vector_store from: `{vs.__file__}` (version: {getattr(vs, '__VERSION__', 'unknown')})")
 
 # ====== Data Loading ======
@@ -37,21 +43,20 @@ with col_a:
         if not records:
             st.error("No records to index.")
         else:
-            texts = [r["text"] for r in records]  # unified text
+            texts = [r["text"] for r in records]
 
             embedder = OfflineEmbedder()
             doc_vecs = embedder.fit_transform(texts)
 
             client = get_client()
             reset_collection(client)
-
             total_indexed = index_records(records, doc_vecs, client=client, batch=100)
 
             st.session_state.embedder = embedder
             st.session_state.indexed = True
             st.success(f"Indexed {total_indexed:,} resumes.")
 with col_b:
-    st.write("")
+    st.write("")  # spacer
 
 st.markdown("---")
 

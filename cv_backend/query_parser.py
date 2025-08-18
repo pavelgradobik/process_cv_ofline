@@ -1,6 +1,6 @@
 import re
 from typing import Dict, List, Optional
-from backend.config import ROLE_SYNONYMS
+from cv_backend.config import ROLE_SYNONYMS
 
 _YEARS_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:\+?\s*)?(?:years?|yrs?)", re.IGNORECASE)
 
@@ -19,6 +19,7 @@ def expand_roles(q: str) -> List[str]:
     for base, syns in ROLE_SYNONYMS.items():
         if base in ql:
             out.extend(syns)
+    # de-dup
     seen = set()
     dedup = []
     for s in out:

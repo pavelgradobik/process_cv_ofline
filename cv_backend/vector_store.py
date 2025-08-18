@@ -4,9 +4,7 @@ import numpy as np
 import chromadb
 from chromadb.config import Settings
 
-from backend.query_parser import (
-    extract_min_years, expand_roles, build_where, enrich_query_text
-)
+from cv_backend.query_parser import build_where
 
 __VERSION__ = "vector_store/1.1.0"
 
@@ -60,7 +58,15 @@ def _index_batches(col, ids: List[str], docs: List[str], metas: List[Dict], vecs
     return total
 
 def index_records(*args, **kwargs) -> int:
+    """
+    Backward-compatible indexer.
 
+    (A) NEW STYLE:
+        index_records(records, vectors, client=None, batch=100)
+
+    (B) OLD STYLE:
+        index_records(client, ids, documents, metadatas, vectors, batch=100)
+    """
     if len(args) >= 2 and isinstance(args[0], list):
         records: List[Dict[str, Any]] = args[0]
         vectors: np.ndarray = args[1]

@@ -1,6 +1,6 @@
 from typing import List, Dict
-from backend.config import CHAT_MODEL
-from backend.engine_client import EngineClient
+from cv_backend.config import CHAT_MODEL
+from cv_backend.engine_client import EngineClient
 
 SYSTEM_PROMPT = (
     "You are an assistant that answers hiring queries using only the provided resume snippets. "
