@@ -9,54 +9,43 @@ from backend.engine_client import EngineClient
 ProgressCb = Optional[Callable[[int, int, str], None]]
 
 class OfflineEmbedder:
-    def __init__(self, dimension: int = 384):
-        self.vectorizer = TfidfVectorizer(max_features=dimension)
+    """
+    Stronger TF-IDF baseline:
+      - sublinear tf
+      - unigrams + bigrams
+      - english stopwords
+      - keep slashes/hyphens to preserve 'ui/ux', 'python-dev'
+    """
+    def __init__(self, max_features: int = 50000):
+        self.vectorizer = TfidfVectorizer(
+            max_features=max_features,
+            lowercase=True,
+            stop_words="english",
+            ngram_range=(1, 2),
+            sublinear_tf=True,
+            token_pattern=r"(?u)\b[\w\-\/]+\b",
+            max_df=0.95,
+            min_df=2
+        )
         self.fitted = False
         self.matrix: Optional[spmatrix] = None
 
-    def fit(self, texts: List[str]):
-        self.vectorizer.fit(texts)
+    def fit(self, documents: List[str]) -> None:
+        self.matrix = self.vectorizer.fit_transform(documents)
         self.fitted = True
-
-    def embed(self, text: str) -> np.ndarray:
-        if not self.fitted:
-            raise RuntimeError("Call fit() before embed()")
-        vec_sparse = self.vectorizer.transform([text])
-        vec = np.asarray(vec_sparse.todense()).flatten()
-        return vec
 
     def embed_batch(self, texts: List[str]) -> np.ndarray:
         if not self.fitted:
-            raise RuntimeError("Call fit() before embed_batch()")
+            raise RuntimeError("OfflineEmbedder not fitted. Call fit(texts) first.")
         mat = self.vectorizer.transform(texts)
-        return np.asarray(mat.todense())
-
-    def embed_batch_with_progress(self, texts: List[str], update: ProgressCb = None) -> np.ndarray:
-        if not self.fitted:
-            raise RuntimeError("Call fit() before embed_batch_with_progress()")
-        total = len(texts)
-        rows = []
-        for i, t in enumerate(texts, 1):
-            vec_sparse = self.vectorizer.transform([t])
-            vec = np.asarray(vec_sparse.todense()).flatten()
-            rows.append(vec)
-            if update and (i % 200 == 0 or i == total):
-                update(i, total, "Vectorizing")
-        return np.vstack(rows)
+        return mat.toarray().astype(np.float32)
 
 class EngineEmbedder:
+
     def __init__(self, model: str = EMBEDDING_MODEL, batch: int = EMBED_BATCH):
         self.client = EngineClient()
         self.model = model
-        self.batch = max(1, int(batch))
-        self.fitted = True
-
-    def fit(self, _texts: List[str]):
-        self.fitted = True
-
-    def embed(self, text: str) -> np.ndarray:
-        vecs = self.client.create_embeddings(self.model, [text])
-        return np.array(vecs[0], dtype=np.float32)
+        self.batch = batch
 
     def embed_batch(self, texts: List[str]) -> np.ndarray:
         out = []
