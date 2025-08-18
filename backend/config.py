@@ -13,3 +13,20 @@ REQUEST_TIMEOUT = float(os.getenv("GENERATIVE_ENGINE_TIMEOUT_SEC", "240"))
 EMBED_BATCH = int(os.getenv("EMBED_BATCH", "128"))
 USE_ENGINE_EMBEDDINGS = os.getenv("USE_ENGINE_EMBEDDINGS", "False").lower() == "False"
 CSV_PATH = os.getenv("CSV_PATH", DEFAULT_CSV)
+
+ROLE_SYNONYMS = {
+    "designer": [
+        "designer", "product designer", "ux designer", "ui designer",
+        "ux/ui designer", "ui/ux designer", "graphic designer",
+        "visual designer", "interaction designer", "ux researcher",
+        "service designer"
+    ],
+    "python developer": [
+        "python developer", "python engineer", "backend python developer",
+        "software engineer python", "data engineer (python)",
+        "ml engineer (python)"
+    ],
+    "qa": ["qa", "qa engineer", "test engineer", "quality assurance"],
+    "frontend": ["frontend developer", "frontend engineer", "react developer", "vue developer"],
+    "backend": ["backend developer", "backend engineer", "server-side developer"],
+}
